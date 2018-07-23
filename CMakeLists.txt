@@ -102,6 +102,7 @@ cuda_add_executable(${name}
 	main.cpp
 	ExposureFusion.h
 	ExposureFusion.cpp
+	ExposureFusion.cu
 )
 
 target_link_libraries(${name}

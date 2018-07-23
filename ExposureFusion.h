@@ -151,9 +151,37 @@ protected:
 	float wcon, wsat, wexp;
 };
 
-class ExposureFusion {
+class PyramidCUDA {
 private:
 
+public:
+
+private:
+
+public:
+	PyramidCUDA();
+	~PyramidCUDA();
+
+	static int buildPyramidLaplacian(cv::cuda::GpuMat img, 
+		std::vector<cv::cuda::GpuMat> & pyrImgs,
+		int levels);
+};
+
+
+class ExposureFusion {
+private:
+	float wcon; 
+	float wsat;
+	float wexp;
+
+	int imgNum;
+	int layerNum;
+	std::vector<cv::Mat> weights;
+	std::vector<std::vector<cv::cuda::GpuMat>> weightsPyr;
+	std::vector<cv::cuda::GpuMat> imgPyr;
+	std::vector<cv::cuda::GpuMat> images;
+	std::vector<std::vector<cv::cuda::GpuMat>> pyrImgs;
+	std::vector<cv::cuda::GpuMat> resPyr;
 public:
 
 private:
@@ -167,6 +195,13 @@ public:
 	@return int
 	*/
 	int calcWeight(cv::Mat dark, cv::Mat light);
+
+	/**
+	@brief fusion two images
+	@return int
+	*/
+	int fusion(cv::cuda::GpuMat dark, cv::cuda::GpuMat light, 
+		cv::cuda::GpuMat & fusion);
 
 };
 
