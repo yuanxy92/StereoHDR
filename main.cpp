@@ -55,7 +55,11 @@ int main(int argc, char* argv[]) {
 	float elapsedTime;
 	cudaEventCreate(&start);
 	cudaEventRecord(start, 0);
-	exFusion.fusion(dark, light, fusion);
+
+	for (int i = 0; i < 1000; i ++) {
+		exFusion.fusion(dark, light, fusion);
+	}
+
 	cudaEventCreate(&stop);
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);

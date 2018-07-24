@@ -37,7 +37,7 @@ ExposureFusion::~ExposureFusion() {}
 int ExposureFusion::calcWeight(cv::Mat dark, cv::Mat light) {
 	// prepare variables
 	imgNum = 2;
-	layerNum = 10;
+	layerNum = 11;
 	weights.resize(imgNum);
 	weightsPyr.resize(imgNum);
 	for (size_t i = 0; i < imgNum; i++) {
