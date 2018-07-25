@@ -163,7 +163,15 @@ public:
 	~PyramidCUDA();
 
 	static int buildPyramidLaplacian(cv::cuda::GpuMat img, 
-		std::vector<cv::cuda::GpuMat> & pyrImgs,
+		std::vector<cv::cuda::GpuMat> & pyrImgsd,
+		std::vector<cv::Mat> & pyrImgsh,
+		std::vector<bool> & devices,
+		int levels);
+
+	static int buildPyramidGaussian(cv::cuda::GpuMat img,
+		std::vector<cv::cuda::GpuMat> & pyrImgsd,
+		std::vector<cv::Mat> & pyrImgsh,
+		std::vector<bool> & devices,
 		int levels);
 };
 
@@ -177,11 +185,15 @@ private:
 	int imgNum;
 	int layerNum;
 	std::vector<cv::Mat> weights;
-	std::vector<std::vector<cv::cuda::GpuMat>> weightsPyr;
+	std::vector<std::vector<cv::cuda::GpuMat>> weightsPyrd;
+	std::vector<std::vector<cv::Mat>> weightsPyrh;
 	std::vector<cv::cuda::GpuMat> imgPyr;
 	std::vector<cv::cuda::GpuMat> images;
-	std::vector<std::vector<cv::cuda::GpuMat>> pyrImgs;
-	std::vector<cv::cuda::GpuMat> resPyr;
+	std::vector<std::vector<cv::cuda::GpuMat>> pyrImgsd;
+	std::vector<std::vector<cv::Mat>> pyrImgsh;
+	std::vector<cv::cuda::GpuMat> resPyrd;
+	std::vector<cv::Mat> resPyrh;
+	std::vector<bool> devices;
 public:
 
 private:

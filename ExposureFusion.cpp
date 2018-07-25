@@ -6,19 +6,69 @@
 
 #include "ExposureFusion.h"
 
+#define MAX_CUDA_SIZE 32
+
 PyramidCUDA::PyramidCUDA() {};
 PyramidCUDA::~PyramidCUDA() {};
 
 int PyramidCUDA::buildPyramidLaplacian(cv::cuda::GpuMat img,
-	std::vector<cv::cuda::GpuMat> & pyrImgs, int levels) {
-	img.convertTo(pyrImgs[0], CV_32F);
-	for (int i = 0; i < levels; ++i) {
-		cv::cuda::pyrDown(pyrImgs[i], pyrImgs[i + 1]);
+	std::vector<cv::cuda::GpuMat> & pyrImgsd,
+	std::vector<cv::Mat> & pyrImgsh,
+	std::vector<bool> & devices,
+	int levels) {
+	pyrImgsd[0] = img;
+	devices[0] = true;
+	for (int i = 0; i < levels - 1; ++i) {
+		if (pyrImgsd[i].cols > MAX_CUDA_SIZE &&
+			pyrImgsd[i].rows > MAX_CUDA_SIZE) {
+			cv::cuda::pyrDown(pyrImgsd[i], pyrImgsd[i + 1]);
+			devices[i] = true;
+		}
+		else if (devices[i - 1] == true) {
+			pyrImgsd[i].download(pyrImgsh[i]);
+			cv::pyrDown(pyrImgsh[i], pyrImgsh[i + 1]);
+			devices[i] = false;
+		}
+		else {
+			cv::pyrDown(pyrImgsh[i], pyrImgsh[i + 1]);
+		}
 	}
-	cv::cuda::GpuMat tmp, tmp2;
-	for (int i = 0; i < levels; ++i) {
-		cv::cuda::pyrUp(pyrImgs[i + 1], tmp);
-		cv::cuda::subtract(pyrImgs[i], tmp, pyrImgs[i]);
+	cv::cuda::GpuMat tmp;
+	cv::Mat tmph;
+	for (int i = 0; i < levels - 1; ++i) {
+		if (devices[i] == true) {
+			cv::cuda::pyrUp(pyrImgsd[i + 1], tmp);
+			cv::cuda::subtract(pyrImgsd[i], tmp, pyrImgsd[i]);
+		}
+		else {
+			cv::pyrUp(pyrImgsh[i + 1], tmph);
+			cv::subtract(pyrImgsh[i], tmph, pyrImgsh[i]);
+		}
+	}
+	return 0;
+}
+
+int PyramidCUDA::buildPyramidGaussian(cv::cuda::GpuMat img,
+	std::vector<cv::cuda::GpuMat> & pyrImgsd,
+	std::vector<cv::Mat> & pyrImgsh,
+	std::vector<bool> & devices,
+	int levels) {
+	pyrImgsd[0] = img;
+	devices[0] = true;
+	for (int i = 0; i < levels - 1; ++i) {
+		if (pyrImgsd[i].cols > MAX_CUDA_SIZE && 
+			pyrImgsd[i].rows > MAX_CUDA_SIZE) {
+			cv::cuda::pyrDown(pyrImgsd[i], pyrImgsd[i + 1]);
+			devices[i] = true;
+		}
+		else if (devices[i - 1] == true) {
+			pyrImgsd[i].download(pyrImgsh[i]);
+			cv::pyrDown(pyrImgsh[i], pyrImgsh[i + 1]);
+			devices[i] = false;
+		}
+		else {
+			cv::pyrDown(pyrImgsh[i], pyrImgsh[i + 1]);
+		}
 	}
 	return 0;
 }
@@ -39,9 +89,12 @@ int ExposureFusion::calcWeight(cv::Mat dark, cv::Mat light) {
 	imgNum = 2;
 	layerNum = 11;
 	weights.resize(imgNum);
-	weightsPyr.resize(imgNum);
+	weightsPyrd.resize(imgNum);
+	weightsPyrh.resize(imgNum);
+	devices.resize(layerNum);
 	for (size_t i = 0; i < imgNum; i++) {
-		weightsPyr[i].resize(layerNum);
+		weightsPyrd[i].resize(layerNum);
+		weightsPyrh[i].resize(layerNum);
 	}
 	std::vector<cv::Mat> images(imgNum);
 	images[0] = dark;
@@ -106,20 +159,41 @@ int ExposureFusion::calcWeight(cv::Mat dark, cv::Mat light) {
 		weights[i] /= weight_sum;
 	}
 
+	this->images.resize(imgNum);
+	this->pyrImgsd.resize(imgNum);
+	this->pyrImgsh.resize(imgNum);
+	this->weightsPyrd.resize(imgNum);
+	this->weightsPyrh.resize(imgNum);
+	for (size_t i = 0; i < imgNum; i++) {
+		this->pyrImgsd[i].resize(layerNum);
+		this->pyrImgsh[i].resize(layerNum);
+		this->weightsPyrd[i].resize(layerNum);
+		this->weightsPyrh[i].resize(layerNum);
+	}
+
 	// build weight pyramid
 	for (size_t i = 0; i < images.size(); i++) {
 		std::vector<cv::Mat> weight_pyr;
-		buildPyramid(weights[i], weight_pyr, layerNum - 1);
-		for (size_t j = 0; j < weight_pyr.size(); j++) {
-			weightsPyr[i][j].upload(weight_pyr[j]);
-			cv::cuda::cvtColor(weightsPyr[i][j], weightsPyr[i][j], cv::COLOR_GRAY2BGR);
-		}
+		cv::cuda::GpuMat weightd;
+		weightd.upload(weights[i]);
+		cv::cuda::cvtColor(weightd, weightd, cv::COLOR_GRAY2BGR);
+		PyramidCUDA::buildPyramidGaussian(weightd, weightsPyrd[i], weightsPyrh[i], devices, layerNum);
+		//buildPyramid(weights[i], weight_pyr, layerNum - 1);
+		//for (size_t j = 0; j < weight_pyr.size(); j++) {
+		//	weightsPyr[i][j].upload(weight_pyr[j]);
+		//	cv::cuda::cvtColor(weightsPyr[i][j], weightsPyr[i][j], cv::COLOR_GRAY2BGR);
+		//}
 	}
 
-	this->images.resize(imgNum);
-	this->pyrImgs.resize(imgNum);
-	for (size_t i = 0; i < imgNum; i++) {
-		this->pyrImgs[i].resize(layerNum);
+	resPyrd.resize(layerNum);
+	resPyrh.resize(layerNum);
+	for (size_t j = 0; j < layerNum; j++) {
+		cv::Size size;
+		if (devices[j] == true)
+			size = weightsPyrd[0][j].size();
+		else size = weightsPyrh[0][j].size();
+		resPyrd[j].create(size, CV_32FC3);
+		resPyrh[j].create(size, CV_32FC3);
 	}
 
 	return 0;
@@ -131,32 +205,48 @@ int ExposureFusion::calcWeight(cv::Mat dark, cv::Mat light) {
 */
 int ExposureFusion::fusion(cv::cuda::GpuMat dark, cv::cuda::GpuMat light,
 	cv::cuda::GpuMat & fusion) {
-	images[0] = dark;
-	images[1] = light;
-	PyramidCUDA::buildPyramidLaplacian(images[0], pyrImgs[0], layerNum - 1);
-	PyramidCUDA::buildPyramidLaplacian(images[1], pyrImgs[1], layerNum - 1);
+	cv::cuda::GpuMat darkf(dark.size(), CV_32FC3);
+	cv::cuda::GpuMat lightf(light.size(), CV_32FC3);
+	dark.convertTo(darkf, CV_32FC3);
+	light.convertTo(lightf, CV_32FC3);
+	PyramidCUDA::buildPyramidLaplacian(darkf, pyrImgsd[0], pyrImgsh[0], devices, layerNum);
+	PyramidCUDA::buildPyramidLaplacian(lightf, pyrImgsd[1], pyrImgsh[1], devices, layerNum);
 
-	if (resPyr.size() == 0) {
-		resPyr.resize(pyrImgs[0].size());
-		for (size_t j = 0; j < layerNum; j++) {
-			resPyr[j].create(pyrImgs[0][j].size(), CV_32FC3);
-		}
-	}
 	for (size_t j = 0; j < layerNum; j++) {
-		resPyr[j].setTo(cv::Scalar(0, 0, 0));
+		resPyrd[j].setTo(cv::Scalar(0, 0, 0));
+		resPyrh[j].setTo(cv::Scalar(0, 0, 0));
 	}
 
-	for (size_t i = 0; i < images.size(); i++) {
+	for (size_t i = 0; i < 2; i++) {
 		for (int lvl = 0; lvl < layerNum; lvl++) {
-			cv::cuda::multiply(pyrImgs[i][lvl], weightsPyr[i][lvl], pyrImgs[i][lvl]);
-			cv::cuda::add(resPyr[lvl], pyrImgs[i][lvl], resPyr[lvl]);
+			if (devices[lvl] == true) {
+				cv::cuda::multiply(pyrImgsd[i][lvl], weightsPyrd[i][lvl], pyrImgsd[i][lvl]);
+				cv::cuda::add(resPyrd[lvl], pyrImgsd[i][lvl], resPyrd[lvl]);
+			}
+			else {
+				cv::multiply(pyrImgsh[i][lvl], weightsPyrh[i][lvl], pyrImgsh[i][lvl]);
+				cv::add(resPyrh[lvl], pyrImgsh[i][lvl], resPyrh[lvl]);
+			}
 		}
 	}
 	for (int lvl = layerNum - 1; lvl > 0; lvl--) {
-		cv::cuda::GpuMat up;
-		cv::cuda::pyrUp(resPyr[lvl], up);
-		cv::cuda::add(resPyr[lvl - 1], up, resPyr[lvl - 1]);
+		if (devices[lvl] == false && devices[lvl - 1] == false) {
+			cv::Mat up;
+			cv::pyrUp(resPyrh[lvl], up);
+			cv::add(resPyrh[lvl - 1], up, resPyrh[lvl - 1]);
+		}
+		else if (devices[lvl] == false && devices[lvl - 1] == true){
+			cv::Mat up;
+			cv::pyrUp(resPyrh[lvl], up);
+			cv::add(resPyrh[lvl - 1], up, resPyrh[lvl - 1]);
+			resPyrd[lvl - 1].upload(resPyrh[lvl - 1]);
+		}
+		else {
+			cv::cuda::GpuMat up;
+			cv::cuda::pyrUp(resPyrd[lvl], up);
+			cv::cuda::add(resPyrd[lvl - 1], up, resPyrd[lvl - 1]);
+		}
 	}
-	fusion = resPyr[0];
+	fusion = resPyrd[0];
 	return 0;
 }
