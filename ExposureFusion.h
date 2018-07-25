@@ -194,6 +194,9 @@ private:
 	std::vector<cv::cuda::GpuMat> resPyrd;
 	std::vector<cv::Mat> resPyrh;
 	std::vector<bool> devices;
+
+	cv::cuda::GpuMat darkf;
+	cv::cuda::GpuMat lightf;
 public:
 
 private:

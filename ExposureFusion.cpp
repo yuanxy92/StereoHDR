@@ -6,7 +6,7 @@
 
 #include "ExposureFusion.h"
 
-#define MAX_CUDA_SIZE 32
+#define MAX_CUDA_SIZE 16
 
 PyramidCUDA::PyramidCUDA() {};
 PyramidCUDA::~PyramidCUDA() {};
@@ -196,6 +196,9 @@ int ExposureFusion::calcWeight(cv::Mat dark, cv::Mat light) {
 		resPyrh[j].create(size, CV_32FC3);
 	}
 
+	darkf.create(dark.size(), CV_32FC3);
+	lightf.create(light.size(), CV_32FC3);
+
 	return 0;
 }
 
@@ -205,16 +208,25 @@ int ExposureFusion::calcWeight(cv::Mat dark, cv::Mat light) {
 */
 int ExposureFusion::fusion(cv::cuda::GpuMat dark, cv::cuda::GpuMat light,
 	cv::cuda::GpuMat & fusion) {
-	cv::cuda::GpuMat darkf(dark.size(), CV_32FC3);
-	cv::cuda::GpuMat lightf(light.size(), CV_32FC3);
 	dark.convertTo(darkf, CV_32FC3);
 	light.convertTo(lightf, CV_32FC3);
 	PyramidCUDA::buildPyramidLaplacian(darkf, pyrImgsd[0], pyrImgsh[0], devices, layerNum);
 	PyramidCUDA::buildPyramidLaplacian(lightf, pyrImgsd[1], pyrImgsh[1], devices, layerNum);
 
 	for (size_t j = 0; j < layerNum; j++) {
-		resPyrd[j].setTo(cv::Scalar(0, 0, 0));
-		resPyrh[j].setTo(cv::Scalar(0, 0, 0));
+		if (j == 0) {
+			resPyrd[j].setTo(cv::Scalar(0, 0, 0));
+		}
+		else if (devices[j] == true && devices[j - 1] == true) {
+			resPyrd[j].setTo(cv::Scalar(0, 0, 0));
+		}
+		else if (devices[j] == false && devices[j - 1] == true) {
+			resPyrd[j].setTo(cv::Scalar(0, 0, 0));
+			resPyrh[j].setTo(cv::Scalar(0, 0, 0));
+		}
+		else {
+			resPyrh[j].setTo(cv::Scalar(0, 0, 0));
+		}
 	}
 
 	for (size_t i = 0; i < 2; i++) {
