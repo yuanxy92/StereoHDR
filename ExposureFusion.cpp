@@ -22,26 +22,33 @@ int PyramidCUDA::buildPyramidLaplacian(cv::cuda::GpuMat img,
 		if (pyrImgsd[i].cols > MAX_CUDA_SIZE &&
 			pyrImgsd[i].rows > MAX_CUDA_SIZE) {
 			cv::cuda::pyrDown(pyrImgsd[i], pyrImgsd[i + 1]);
+			cv::cuda::pyrDown(pyrImgsd[i + 1], pyrImgsd[i + 1]);
 			devices[i] = true;
 		}
 		else if (devices[i - 1] == true) {
 			pyrImgsd[i].download(pyrImgsh[i]);
 			cv::pyrDown(pyrImgsh[i], pyrImgsh[i + 1]);
+			cv::pyrDown(pyrImgsh[i + 1], pyrImgsh[i + 1]);
 			devices[i] = false;
 		}
 		else {
 			cv::pyrDown(pyrImgsh[i], pyrImgsh[i + 1]);
+			cv::pyrDown(pyrImgsh[i + 1], pyrImgsh[i + 1]);
+			devices[i] = false;
 		}
 	}
+	devices[levels - 1] = devices[levels - 2];
 	cv::cuda::GpuMat tmp;
 	cv::Mat tmph;
 	for (int i = 0; i < levels - 1; ++i) {
 		if (devices[i] == true) {
 			cv::cuda::pyrUp(pyrImgsd[i + 1], tmp);
+			cv::cuda::pyrUp(tmp, tmp);
 			cv::cuda::subtract(pyrImgsd[i], tmp, pyrImgsd[i]);
 		}
 		else {
 			cv::pyrUp(pyrImgsh[i + 1], tmph);
+			cv::pyrUp(tmph, tmph);
 			cv::subtract(pyrImgsh[i], tmph, pyrImgsh[i]);
 		}
 	}
@@ -59,17 +66,22 @@ int PyramidCUDA::buildPyramidGaussian(cv::cuda::GpuMat img,
 		if (pyrImgsd[i].cols > MAX_CUDA_SIZE && 
 			pyrImgsd[i].rows > MAX_CUDA_SIZE) {
 			cv::cuda::pyrDown(pyrImgsd[i], pyrImgsd[i + 1]);
+			cv::cuda::pyrDown(pyrImgsd[i + 1], pyrImgsd[i + 1]);
 			devices[i] = true;
 		}
 		else if (devices[i - 1] == true) {
 			pyrImgsd[i].download(pyrImgsh[i]);
 			cv::pyrDown(pyrImgsh[i], pyrImgsh[i + 1]);
+			cv::pyrDown(pyrImgsh[i + 1], pyrImgsh[i + 1]);
 			devices[i] = false;
 		}
 		else {
 			cv::pyrDown(pyrImgsh[i], pyrImgsh[i + 1]);
+			cv::pyrDown(pyrImgsh[i + 1], pyrImgsh[i + 1]);
+			devices[i] = false;
 		}
 	}
+	devices[levels - 1] = devices[levels - 2];
 	return 0;
 }
 
@@ -87,7 +99,7 @@ ExposureFusion::~ExposureFusion() {}
 int ExposureFusion::calcWeight(cv::Mat dark, cv::Mat light) {
 	// prepare variables
 	imgNum = 2;
-	layerNum = 11;
+	layerNum = 5;
 	weights.resize(imgNum);
 	weightsPyrd.resize(imgNum);
 	weightsPyrh.resize(imgNum);
@@ -178,11 +190,6 @@ int ExposureFusion::calcWeight(cv::Mat dark, cv::Mat light) {
 		weightd.upload(weights[i]);
 		cv::cuda::cvtColor(weightd, weightd, cv::COLOR_GRAY2BGR);
 		PyramidCUDA::buildPyramidGaussian(weightd, weightsPyrd[i], weightsPyrh[i], devices, layerNum);
-		//buildPyramid(weights[i], weight_pyr, layerNum - 1);
-		//for (size_t j = 0; j < weight_pyr.size(); j++) {
-		//	weightsPyr[i][j].upload(weight_pyr[j]);
-		//	cv::cuda::cvtColor(weightsPyr[i][j], weightsPyr[i][j], cv::COLOR_GRAY2BGR);
-		//}
 	}
 
 	resPyrd.resize(layerNum);
@@ -245,17 +252,20 @@ int ExposureFusion::fusion(cv::cuda::GpuMat dark, cv::cuda::GpuMat light,
 		if (devices[lvl] == false && devices[lvl - 1] == false) {
 			cv::Mat up;
 			cv::pyrUp(resPyrh[lvl], up);
+			cv::pyrUp(up, up);
 			cv::add(resPyrh[lvl - 1], up, resPyrh[lvl - 1]);
 		}
 		else if (devices[lvl] == false && devices[lvl - 1] == true){
 			cv::Mat up;
 			cv::pyrUp(resPyrh[lvl], up);
+			cv::pyrUp(up, up);
 			cv::add(resPyrh[lvl - 1], up, resPyrh[lvl - 1]);
 			resPyrd[lvl - 1].upload(resPyrh[lvl - 1]);
 		}
 		else {
 			cv::cuda::GpuMat up;
 			cv::cuda::pyrUp(resPyrd[lvl], up);
+			cv::cuda::pyrUp(up, up);
 			cv::cuda::add(resPyrd[lvl - 1], up, resPyrd[lvl - 1]);
 		}
 	}
