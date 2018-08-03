@@ -6,6 +6,9 @@
 
 #include "ExposureFusion.h"
 
+#include <cuda.h>
+#include <cuda_runtime.h>
+
 PyramidCUDA::PyramidCUDA() {};
 PyramidCUDA::~PyramidCUDA() {};
 
@@ -158,5 +161,151 @@ int ExposureFusion::fusion(cv::cuda::GpuMat dark, cv::cuda::GpuMat light,
 		cv::cuda::add(resPyr[lvl - 1], up, resPyr[lvl - 1]);
 	}
 	fusion = resPyr[0];
+	return 0;
+}
+
+int ExposureFusion::fusionRaman(cv::cuda::GpuMat dark, cv::cuda::GpuMat light, cv::cuda::GpuMat & fusion, int code)
+{
+	std::vector<cv::cuda::GpuMat> imgStack;
+	imgStack.push_back(dark);
+	imgStack.push_back(light);
+	this->fusionRaman(imgStack, fusion, code);
+	return 0;
+}
+
+int ExposureFusion::fusionRaman(std::vector<cv::cuda::GpuMat> imgStack, cv::cuda::GpuMat & fusion, int code)
+{
+	if (imgStack.size() < 2)
+		return -1;
+
+	std::vector<cv::cuda::GpuMat> useageStack;
+	useageStack.resize(imgStack.size());
+	for (int i = 0; i < imgStack.size(); i++)
+	{
+		imgStack[i].convertTo(useageStack[i], CV_32FC3, 1.0/255);
+	}
+	
+	int r = imgStack[0].rows;
+	int c = imgStack[0].cols;
+	int col = imgStack[0].channels();
+	int n = imgStack.size();
+
+	double C = 70.0 / 255.0;
+	double K1 = 1.0;
+	double K2 = 1.0 / 10.0;
+	double sigma_s = MIN(r, c);
+	double imageStackMax = 1.0;//TODO:should search the img ref:https://docs.opencv.org/3.4/d5/de6/group__cudaarithm__reduce.html#ga5cacbc2a2323c4eaa81e7390c5d9f530
+	double imageStackMin = 0.0;
+	double sigma_r = K2 * (imageStackMax - imageStackMin);
+	cv::cuda::GpuMat total;
+	std::vector<cv::cuda::GpuMat> weight;
+	weight.resize(n);
+	total.create(r, c, CV_32FC1);
+	total.setTo(cv::Scalar(0));
+	for (int i = 0; i < n; i++)
+	{
+		
+		weight[i].create(r, c, CV_32FC1);
+		cv::cuda::GpuMat XYZ;
+		std::vector<cv::cuda::GpuMat> split_XYZ;
+		cv::cuda::cvtColor(useageStack[i], XYZ, code);
+		cv::cuda::split(XYZ, split_XYZ);
+
+		//split_XYZ[1].download(t);
+
+		cudaEvent_t start, stop;
+		float elapsedTime;
+		cudaEventCreate(&start);
+		cudaEventRecord(start, 0);
+
+		cv::cuda::bilateralFilter(split_XYZ[1], weight[i], 3, 0.1, r); //TODO: stream maybe?
+
+		cudaEventCreate(&stop);
+		cudaEventRecord(stop, 0);
+		cudaEventSynchronize(stop);
+		cudaEventElapsedTime(&elapsedTime, start, stop);
+		printf("bilateralFilter: (file:%s, line:%d) elapsed time : %f ms\n", __FILE__, __LINE__, elapsedTime);
+
+		//weight[i].download(t);
+		//int x = 10;
+		cv::cuda::absdiff(weight[i], split_XYZ[1], weight[i]);
+		weight[i].convertTo(weight[i], CV_32FC1, 1.0, C);
+		
+		cv::cuda::add(weight[i], total, total);
+	}
+	fusion.create(r, c, CV_32FC3);
+	fusion.setTo(cv::Scalar(0,0,0));
+	for (int i = 0; i < n; i++)
+	{
+		cv::cuda::GpuMat tmp,tmpdiv;
+		cv::cuda::divide(weight[i], total, tmpdiv);
+		cv::cuda::cvtColor(tmpdiv, tmpdiv, cv::COLOR_GRAY2BGR);
+		cv::cuda::multiply(useageStack[i], tmpdiv, tmp);
+		cv::cuda::add(fusion, tmp, fusion);
+	}
+	//cv::Mat t;
+	//fusion.download(t);
+	
+	return 0;
+}
+
+int ExposureFusion::fusionRaman(std::vector<cv::Mat> imgStack, cv::Mat & fusion, int code)
+{
+	if (imgStack.size() < 2)
+		return -1;
+
+	std::vector<cv::Mat> useageStack;
+	useageStack.resize(imgStack.size());
+	for (int i = 0; i < imgStack.size(); i++)
+	{
+		imgStack[i].convertTo(useageStack[i], CV_32FC3, 1.0 / 255);
+	}
+
+	int r = imgStack[0].rows;
+	int c = imgStack[0].cols;
+	int col = imgStack[0].channels();
+	int n = imgStack.size();
+
+	double C = 70.0 / 255.0;
+	double K1 = 1.0;
+	double K2 = 1.0 / 10.0;
+	double sigma_s = MIN(r, c);
+	double imageStackMax = 1.0;//TODO:should search the img ref:https://docs.opencv.org/3.4/d5/de6/group__cudaarithm__reduce.html#ga5cacbc2a2323c4eaa81e7390c5d9f530
+	double imageStackMin = 0.0;
+	double sigma_r = K2 * (imageStackMax - imageStackMin);
+	cv::Mat total;
+	std::vector<cv::Mat> weight;
+	weight.resize(n);
+	total.create(r, c, CV_32FC1);
+	total.setTo(cv::Scalar(0));
+	for (int i = 0; i < n; i++)
+	{
+
+		weight[i].create(r, c, CV_32FC1);
+		cv::Mat XYZ;
+		std::vector<cv::Mat> split_XYZ;
+		cv::cvtColor(useageStack[i], XYZ, code);
+		cv::split(XYZ, split_XYZ);
+
+		//split_XYZ[1].download(t);
+
+		cv::bilateralFilter(split_XYZ[1], weight[i], 3, 0.1, r); //TODO: stream maybe?
+																	   //weight[i].download(t);
+																	   //int x = 10;
+		cv::absdiff(weight[i], split_XYZ[1], weight[i]);
+		weight[i].convertTo(weight[i], CV_32FC1, 1.0, C);
+
+		cv::add(weight[i], total, total);
+	}
+	fusion.create(r, c, CV_32FC3);
+	fusion.setTo(cv::Scalar(0, 0, 0));
+	for (int i = 0; i < n; i++)
+	{
+		cv::Mat tmp, tmpdiv;
+		cv::divide(weight[i], total, tmpdiv);
+		cv::cvtColor(tmpdiv, tmpdiv, cv::COLOR_GRAY2BGR);
+		cv::multiply(useageStack[i], tmpdiv, tmp);
+		cv::add(fusion, tmp, fusion);
+	}
 	return 0;
 }

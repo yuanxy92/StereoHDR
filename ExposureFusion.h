@@ -203,6 +203,15 @@ public:
 	int fusion(cv::cuda::GpuMat dark, cv::cuda::GpuMat light, 
 		cv::cuda::GpuMat & fusion);
 
+	int fusionRaman(cv::cuda::GpuMat dark, cv::cuda::GpuMat light,
+		cv::cuda::GpuMat & fusion, int code = cv::COLOR_RGB2XYZ);
+
+	int fusionRaman(std::vector<cv::cuda::GpuMat> imgStack,
+		cv::cuda::GpuMat & fusion, int code = cv::COLOR_RGB2XYZ);
+
+	int fusionRaman(std::vector<cv::Mat> imgStack,
+		cv::Mat & fusion, int code = cv::COLOR_RGB2XYZ);
+
 };
 
 #endif // !__CUDA_EXPOSURE_FUSION_H__
