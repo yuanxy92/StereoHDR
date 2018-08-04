@@ -185,6 +185,7 @@ private:
 public:
 
 private:
+	int bilateralFilter_GPU(cv::cuda::GpuMat & input, cv::cuda::GpuMat & output, int r, float sI, float sS);
 
 public:
 	ExposureFusion();
@@ -211,6 +212,9 @@ public:
 
 	int fusionRaman(std::vector<cv::Mat> imgStack,
 		cv::Mat & fusion, int code = cv::COLOR_RGB2XYZ);
+
+	//Only RGB imgs are acceptable
+	int fusionRaman_kernal(cv::cuda::GpuMat &img1, cv::cuda::GpuMat &img2, cv::cuda::GpuMat &ret);
 
 };
 

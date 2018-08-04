@@ -175,6 +175,7 @@ int ExposureFusion::fusionRaman(cv::cuda::GpuMat dark, cv::cuda::GpuMat light, c
 
 int ExposureFusion::fusionRaman(std::vector<cv::cuda::GpuMat> imgStack, cv::cuda::GpuMat & fusion, int code)
 {
+
 	if (imgStack.size() < 2)
 		return -1;
 
@@ -202,6 +203,9 @@ int ExposureFusion::fusionRaman(std::vector<cv::cuda::GpuMat> imgStack, cv::cuda
 	weight.resize(n);
 	total.create(r, c, CV_32FC1);
 	total.setTo(cv::Scalar(0));
+
+
+
 	for (int i = 0; i < n; i++)
 	{
 		
@@ -211,21 +215,24 @@ int ExposureFusion::fusionRaman(std::vector<cv::cuda::GpuMat> imgStack, cv::cuda
 		cv::cuda::cvtColor(useageStack[i], XYZ, code);
 		cv::cuda::split(XYZ, split_XYZ);
 
-		//split_XYZ[1].download(t);
-
 		cudaEvent_t start, stop;
 		float elapsedTime;
 		cudaEventCreate(&start);
 		cudaEventRecord(start, 0);
+		//split_XYZ[1].download(t);
 
-		cv::cuda::bilateralFilter(split_XYZ[1], weight[i], 3, 0.1, r); //TODO: stream maybe?
+		//cv::cuda::bilateralFilter(split_XYZ[1], weight[i], 3, sigma_r, sigma_s); //TODO: stream maybe?
+		this->bilateralFilter_GPU(split_XYZ[1], weight[i], 1, sigma_r, sigma_s);
+		//this->bilateralFilter_GPU(split_XYZ[1], weight[i], 1, sigma_s, sigma_r);
+
+		cv::Mat t;
+		weight[i].download(t);
 
 		cudaEventCreate(&stop);
 		cudaEventRecord(stop, 0);
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&elapsedTime, start, stop);
-		printf("bilateralFilter: (file:%s, line:%d) elapsed time : %f ms\n", __FILE__, __LINE__, elapsedTime);
-
+		printf("fusion: (file:%s, line:%d) elapsed time : %f ms\n", __FILE__, __LINE__, elapsedTime);
 		//weight[i].download(t);
 		//int x = 10;
 		cv::cuda::absdiff(weight[i], split_XYZ[1], weight[i]);
@@ -233,8 +240,15 @@ int ExposureFusion::fusionRaman(std::vector<cv::cuda::GpuMat> imgStack, cv::cuda
 		
 		cv::cuda::add(weight[i], total, total);
 	}
+
+
+
+
+
 	fusion.create(r, c, CV_32FC3);
 	fusion.setTo(cv::Scalar(0,0,0));
+
+
 	for (int i = 0; i < n; i++)
 	{
 		cv::cuda::GpuMat tmp,tmpdiv;
@@ -243,6 +257,10 @@ int ExposureFusion::fusionRaman(std::vector<cv::cuda::GpuMat> imgStack, cv::cuda
 		cv::cuda::multiply(useageStack[i], tmpdiv, tmp);
 		cv::cuda::add(fusion, tmp, fusion);
 	}
+
+
+
+
 	//cv::Mat t;
 	//fusion.download(t);
 	
@@ -309,3 +327,5 @@ int ExposureFusion::fusionRaman(std::vector<cv::Mat> imgStack, cv::Mat & fusion,
 	}
 	return 0;
 }
+
+

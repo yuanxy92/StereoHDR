@@ -14,6 +14,45 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+void fusion_roman2()
+{
+	std::vector<cv::Mat> images;
+	std::vector<cv::cuda::GpuMat> gpu_images;
+	images.push_back(cv::imread("E:\\data\\EF\\1.jpg"));
+	images.push_back(cv::imread("E:\\data\\EF\\2.jpg"));
+	gpu_images.resize(images.size());
+	for (int i = 0; i < images.size(); i++)
+	{
+		gpu_images[i].upload(images[i]);
+		cv::cuda::cvtColor(gpu_images[i], gpu_images[i], cv::COLOR_BGR2RGB);
+	}
+	cv::cuda::GpuMat fusion;
+	ExposureFusion exFusion;
+
+	cudaEvent_t start, stop;
+	float elapsedTime;
+	cudaEventCreate(&start);
+	cudaEventRecord(start, 0);
+
+	for (int i = 0; i < 10; i++)
+	{
+		exFusion.fusionRaman_kernal(gpu_images[0], gpu_images[1], fusion);
+	}
+
+	cudaEventCreate(&stop);
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsedTime, start, stop);
+	printf("Exposure Fusion (With Kernal Function) * 10 times: (file:%s, line:%d) elapsed time : %f ms\n", __FILE__, __LINE__, elapsedTime);
+
+	cv::cuda::cvtColor(fusion, fusion, cv::COLOR_RGB2BGR);
+	cv::Mat ans;
+	fusion.download(ans);
+	cv::imwrite("E://data//EF//fusion_mine_2.jpg", ans);
+	getchar();
+	return;
+}
+
 void fusion_roman()
 {
 	std::vector<cv::Mat> images;
@@ -22,7 +61,9 @@ void fusion_roman()
 	images.push_back(cv::imread("E:\\data\\EF\\2.jpg"));
 	gpu_images.resize(images.size());
 	for (int i = 0; i < images.size(); i++)
+	{
 		gpu_images[i].upload(images[i]);
+	}
 	cv::cuda::GpuMat fusion, fusion255;
 	ExposureFusion exFusion;
 
@@ -43,7 +84,7 @@ void fusion_roman()
 	fusion.convertTo(fusion255, CV_8UC3, 255.0);
 	cv::Mat ans;
 	fusion255.download(ans);
-	cv::imwrite("E://data//EF//fusion.jpg", ans);
+	cv::imwrite("E://data//EF//fusion_mine.jpg", ans);
 	getchar();
 	return;
 }
@@ -83,8 +124,8 @@ void fusion_py()
 
 
 int main(int argc, char* argv[]) {
-	fusion_roman();
-
+	//fusion_roman();
+	fusion_roman2();
 	return 0;
 }
 
